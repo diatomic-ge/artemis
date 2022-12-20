@@ -67,7 +67,10 @@ def real_time(mootime):
     return realtime
 
 
-def moo_time(realtime=datetime.datetime.now(UTC)):
+def moo_time(realtime=None):
+    if (realtime is None):
+        realtime = datetime.datetime.now(UTC)
+
     realsecs = realtime.timestamp()
 
     moosecs = (realsecs - 1620903200) * 8
