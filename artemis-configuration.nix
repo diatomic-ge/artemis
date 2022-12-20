@@ -14,14 +14,17 @@ in
 
   networking.firewall.allowedTCPPorts = [
     22
+    30025
   ];
+
+  networking.hostName = "artemis";
 
   services.sshd.enable = true;
 
   system.stateVersion = "22.11";
 
   systemd.services.artemis = {
-    after = [ "network.target " ];
+    after = [ "network.target" ];
     wantedBy = [ "multi-user.target" ];
     description = "Start up the Artemis listener.";
 
