@@ -1,0 +1,4 @@
+.envrc
+*.bsp
+__pycache__/
+/result/
