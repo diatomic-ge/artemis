@@ -5,6 +5,7 @@
 
 import asyncio
 import datetime
+import itertools
 import os
 from skyfield import almanac, api, eclipselib
 
@@ -22,11 +23,119 @@ PORT = 30025
 # UTC.
 UTC = datetime.timezone.utc
 
+# A rough location for the MOO's setting, San Francisco.
+LOCATION = api.wgs84.latlon(37.7775, -122.416389, 16)
+
 ts = api.load.timescale()
 ephemeris = api.load(EPHEMERIS_DATA)
 
 
-def nearest_lunar_eclipse(time=datetime.datetime.now(UTC)):
+def get_prev_next(time, data):
+    prev_event = None
+    prev_event_delta = None
+    next_event = None
+    next_event_delta = None
+
+    # Convert to UTC time.
+    data = ((d[0].astimezone(UTC), *(d[1:])) for d in data)
+
+    for event in data:
+        t = event[0].astimezone(UTC)
+        delta = abs(t - time)
+
+        if t <= time:
+            if prev_event is None or delta < prev_event_delta:
+                prev_event = event
+                prev_event_delta = delta
+        elif t > time:
+            if next_event is None or delta < next_event_delta:
+                next_event = event
+                next_event_delta = delta
+
+    return (prev_event, next_event)
+
+
+def sunrise_sunset(time=None, location=LOCATION):
+    if (time is None):
+        time = datetime.datetime.now(UTC)
+
+    # Search within 5 days in either direction.
+    # This is probably overkill.
+    delta = datetime.timedelta(days=5)
+    low_time = ts.from_datetime(time - delta)
+    high_time = ts.from_datetime(time + delta)
+
+    f = almanac.sunrise_sunset(ephemeris, location)
+
+    events = almanac.find_discrete(low_time, high_time, f)
+
+    rises = get_prev_next(time, (event for event in zip(*events) if event[1]))
+    sets = get_prev_next(time, (event for event in zip(*events) if not event[1]))
+
+    for event in itertools.chain(rises, sets):
+        if event is None:
+            raise ValueError("Couldn't find a past/future sunrise/sunset")
+
+    rises = [d[0] for d in rises]
+    sets = [d[0] for d in sets]
+
+    return (rises, sets)
+
+
+def body_rise_set(time=None, body=None, location=LOCATION):
+    if (time is None):
+        time = datetime.datetime.now(UTC)
+    if (body is None):
+        body = ephemeris['Moon']
+
+    # Search within 5 days in either direction.
+    # This is probably overkill.
+    delta = datetime.timedelta(days=5)
+    low_time = ts.from_datetime(time - delta)
+    high_time = ts.from_datetime(time + delta)
+
+    f = almanac.risings_and_settings(ephemeris, body, location)
+
+    events = almanac.find_discrete(low_time, high_time, f)
+
+    rises = get_prev_next(time, (event for event in zip(*events) if event[1]))
+    sets = get_prev_next(time, (event for event in zip(*events) if not event[1]))
+
+    for event in itertools.chain(rises, sets):
+        if event is None:
+            raise ValueError("Couldn't find a past/future body rise/set")
+
+    rises = [d[0] for d in rises]
+    sets = [d[0] for d in sets]
+
+    return (rises, sets)
+
+
+def lunar_eclipses(time=None):
+    if (time is None):
+        time = datetime.datetime.now(UTC)
+
+    # Search within 20 years or so.
+    # If we somehow don't find a lunar eclipse, we can error later.
+    delta = datetime.timedelta(days=10*365)
+    low_time = ts.from_datetime(time - delta)
+    high_time = ts.from_datetime(time + delta)
+
+    times, etype, details = eclipselib.lunar_eclipses(low_time, high_time, ephemeris)
+
+    eclipses = get_prev_next(time, zip(times, etype))
+
+    for event in eclipses:
+        if event is None:
+            raise ValueError("Couldn't find a past/future lunar eclipse")
+
+    return eclipses
+
+
+def nearest_lunar_eclipse(time=None):
+    if (time is None):
+        time = datetime.datetime.now(UTC)
+
     # Search within 10 years or so.
     # If we somehow don't find a lunar eclipse, we can error later.
     delta = datetime.timedelta(days=5*365)
@@ -115,6 +224,40 @@ async def request_handler(reader, writer):
             time = round(real_time(time).timestamp())
 
             reply = f'{time}\n{etype}'
+        elif (request == 'LunarEclipsesReal'):
+            past, future = lunar_eclipses()
+
+            past = (round(past[0].timestamp()), eclipselib.LUNAR_ECLIPSES[past[1]])
+            future = (round(future[0].timestamp()), eclipselib.LUNAR_ECLIPSES[future[1]])
+
+            reply = f'{past[0]}\n{past[1]}\n{future[0]}\n{future[1]}'
+        elif (request == 'LunarEclipsesMOO'):
+            past, future = lunar_eclipses(moo_time())
+
+            past = (round(real_time(past[0]).timestamp()), eclipselib.LUNAR_ECLIPSES[past[1]])
+            future = (round(real_time(future[0]).timestamp()), eclipselib.LUNAR_ECLIPSES[future[1]])
+
+            reply = f'{past[0]}\n{past[1]}\n{future[0]}\n{future[1]}'
+        elif (request == 'SunRiseSetReal'):
+            rises, sets = sunrise_sunset()
+            data = (f'{round(t.timestamp())}' for t in itertools.chain(rises, sets))
+
+            reply = '\n'.join(data)
+        elif (request == 'SunRiseSetMOO'):
+            rises, sets = sunrise_sunset(moo_time())
+            data = (f'{round(real_time(t).timestamp())}' for t in itertools.chain(rises, sets))
+
+            reply = '\n'.join(data)
+        elif (request == 'MoonRiseSetReal'):
+            rises, sets = body_rise_set()
+            data = (f'{round(t.timestamp())}' for t in itertools.chain(rises, sets))
+
+            reply = '\n'.join(data)
+        elif (request == 'MoonRiseSetMOO'):
+            rises, sets = body_rise_set(moo_time())
+            data = (f'{round(real_time(t).timestamp())}' for t in itertools.chain(rises, sets))
+
+            reply = '\n'.join(data)
         else:
             reply = 'UnknownCommand'
 
