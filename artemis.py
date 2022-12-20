@@ -94,35 +94,37 @@ async def request_handler(reader, writer):
         if (request == 'MoonPhaseReal'):
             phase = almanac.moon_phase(ephemeris, ts.now())
 
-            reply = f'{phase.degrees:.10f}\n'
+            reply = f'{phase.degrees:.10f}'
         elif (request == 'MoonPhaseMOO'):
             mootime = ts.from_datetime(moo_time())
             phase = almanac.moon_phase(ephemeris, mootime)
 
-            reply = f'{phase.degrees:.10f}\n'
+            reply = f'{phase.degrees:.10f}'
         elif (request == 'NearestLunarEclipseReal'):
             time, etype = nearest_lunar_eclipse()
             etype = eclipselib.LUNAR_ECLIPSES[etype]
             time = round(time.timestamp())
 
-            reply = f'{time}\n{etype}\n'
+            reply = f'{time}\n{etype}'
         elif (request == 'NearestLunarEclipseMOO'):
             time, etype = nearest_lunar_eclipse(moo_time())
             etype = eclipselib.LUNAR_ECLIPSES[etype]
             time = round(real_time(time).timestamp())
 
-            reply = f'{time}\n{etype}\n'
+            reply = f'{time}\n{etype}'
         else:
-            reply = 'UnknownCommand\n'
+            reply = 'UnknownCommand'
 
     except UnicodeError as err:
         print(f'Failed to decode request from {addr!r}: {err}')
-        reply = 'BadCommand\n'
+        reply = 'BadCommand'
 
     except ValueError as err:
         print(f'Failed to handle request from {addr!r}: {err}')
-        reply = 'BadValue\n'
+        reply = 'BadValue'
 
+    # Add a terminator.
+    reply = reply + '\n.\n'
     replydata = reply.encode('ascii')
 
     print(f'Sending reply to {addr!r}: {reply!r}')
