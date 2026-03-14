@@ -165,18 +165,34 @@ def nearest_lunar_eclipse(time=None):
 
 
 def real_time(mootime):
-    moorawtime = mootime.replace(year=mootime.year - 259)
+    MAX_TRIES = 48
 
-    moosecs = moorawtime.timestamp()
+    moorawtime = None
 
-    realsecs = moosecs / 8 + 1620903200
+    for offset_hours in range(MAX_TRIES):
+        # Keep trying to map this to a nearby valid time.
+        try:
+            # Offset by an hour of moo time, or 7.5 minutes real time.
+            attempttime = mootime + datetime.timedelta(hours=offset_hours)
 
-    realtime = datetime.datetime.fromtimestamp(realsecs, tz=UTC)
+            moorawtime = attempttime.replace(year=mootime.year - 259)
 
-    return realtime
+            moosecs = moorawtime.timestamp()
+
+            realsecs = moosecs / 8 + 1620903200
+
+            realtime = datetime.datetime.fromtimestamp(realsecs, tz=UTC)
+
+            return realtime
+        except ValueError:
+            # If that was our last attempt, reraise.
+            if offset_hours == MAX_TRIES - 1:
+                raise
 
 
 def moo_time(realtime=None):
+    MAX_TRIES = 48
+
     if (realtime is None):
         realtime = datetime.datetime.now(UTC)
 
@@ -184,9 +200,19 @@ def moo_time(realtime=None):
 
     moosecs = (realsecs - 1620903200) * 8
 
-    moorawtime = datetime.datetime.fromtimestamp(moosecs, tz=UTC)
+    for offset in range(MAX_TRIES):
+        # Keep trying to map this to a valid time.
+        try:
+            # Offset by an hour of moo time, or 7.5 minutes real time.
+            attemptsecs = moosecs + 3600*offset
 
-    mootime = moorawtime.replace(year=moorawtime.year + 259)
+            moorawtime = datetime.datetime.fromtimestamp(attemptsecs, tz=UTC)
+
+            mootime = moorawtime.replace(year=moorawtime.year + 259)
+        except ValueError:
+            # If that was our last attempt, reraise.
+            if offset_hours == MAX_TRIES - 1:
+                raise
 
     return mootime
 
